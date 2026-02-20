@@ -81,23 +81,30 @@ async def gmail_get_message_details(email_id: str) -> dict[str, Any]:
     name="gmail_get_attachment_content",
     description="Retrieves a specific attachment from a Gmail message.",
 )
-async def gmail_get_attachment_content(message_id: str, attachment_id: str) -> dict[str, Any]:
+async def gmail_get_attachment_content(message_id: str, attachment_id: str, filename: str = "", mime_type: str = "") -> dict[str, Any]:
     """
-    Retrieves a specific attachment from a Gmail message.
+    Retrieves a specific attachment from a Gmail message and saves it to a temp file.
 
     Args:
         message_id: The ID of the email message.
         attachment_id: The ID of the attachment to retrieve.
+        filename: Optional filename (avoids extra API call if provided).
+        mime_type: Optional MIME type (avoids extra API call if provided).
 
     Returns:
-        A dictionary containing filename, mimeType, size, and base64 data.
+        A dictionary containing filename, mimeType, size, and file_path on disk.
     """
     logger.info(f"Executing gmail_get_attachment_content tool - Msg: {message_id}, Attach: {attachment_id}")
     if not message_id or not attachment_id:
         raise ValueError("Message ID and attachment ID are required")
 
     gmail_service = GmailService()
-    result = gmail_service.get_attachment_content(message_id=message_id, attachment_id=attachment_id)
+    result = gmail_service.get_attachment_content(
+        message_id=message_id,
+        attachment_id=attachment_id,
+        filename=filename or None,
+        mime_type=mime_type or None,
+    )
 
     if not result or (isinstance(result, dict) and result.get("error")):
         error_msg = "Error getting attachment"
@@ -105,7 +112,6 @@ async def gmail_get_attachment_content(message_id: str, attachment_id: str) -> d
             error_msg = result.get("message", error_msg)
         raise ValueError(error_msg)
 
-    # FastMCP should handle this dict, recognizing 'data' as content blob.
     return result
 
 

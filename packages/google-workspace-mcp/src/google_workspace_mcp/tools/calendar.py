@@ -14,30 +14,30 @@ logger = logging.getLogger(__name__)
 # --- Calendar Tool Functions --- #
 
 
-# @mcp.tool(
-#     name="list_calendars",
-#     description="Lists all calendars accessible by the user.",
-# )
-# async def list_calendars() -> dict[str, Any]:
-#     """
-#     Lists all calendars accessible by the user.
+@mcp.tool(
+    name="list_calendars",
+    description="Lists all calendars accessible by the user.",
+)
+async def list_calendars() -> dict[str, Any]:
+    """
+    Lists all calendars accessible by the user.
 
-#     Returns:
-#         A dictionary containing the list of calendars or an error message.
-#     """
-#     logger.info("Executing list_calendars tool")
+    Returns:
+        A dictionary containing the list of calendars or an error message.
+    """
+    logger.info("Executing list_calendars tool")
 
-#     calendar_service = CalendarService()
-#     calendars = calendar_service.list_calendars()
+    calendar_service = CalendarService()
+    calendars = calendar_service.list_calendars()
 
-#     if isinstance(calendars, dict) and calendars.get("error"):
-#         raise ValueError(calendars.get("message", "Error listing calendars"))
+    if isinstance(calendars, dict) and calendars.get("error"):
+        raise ValueError(calendars.get("message", "Error listing calendars"))
 
-#     if not calendars:
-#         return {"message": "No calendars found."}
+    if not calendars:
+        return {"message": "No calendars found."}
 
-#     # Return raw service result
-#     return {"count": len(calendars), "calendars": calendars}
+    # Return raw service result
+    return {"count": len(calendars), "calendars": calendars}
 
 
 @mcp.tool(

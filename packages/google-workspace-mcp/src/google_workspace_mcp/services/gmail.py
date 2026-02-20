@@ -5,11 +5,13 @@ Google Gmail service implementation.
 import base64
 import json
 import logging
+import tempfile
 import time
 import traceback
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr, getaddresses
+from pathlib import Path
 from typing import Any
 
 from google_workspace_mcp.services.base import BaseGoogleService
@@ -491,7 +493,7 @@ class GmailService(BaseGoogleService):
         except Exception as e:
             return self.handle_api_error("reply_to_email", e)
 
-    def get_attachment_content(self, message_id: str, attachment_id: str) -> dict[str, Any] | None:
+    def get_attachment_content(self, message_id: str, attachment_id: str, filename: str | None = None, mime_type: str | None = None) -> dict[str, Any] | None:
         """
         Get the content of an attachment from an email message.
 
@@ -511,15 +513,35 @@ class GmailService(BaseGoogleService):
                 .execute()
             )
 
-            # Get the full message to extract metadata
-            message = self.service.users().messages().get(userId="me", id=message_id).execute()
-            attachment_info = self._find_attachment_in_payload(message.get("payload", {}), attachment_id)
+            # Use provided metadata or look it up from the message
+            if not filename or not mime_type:
+                message = self.service.users().messages().get(userId="me", id=message_id, format="full").execute()
+                attachment_info = self._find_attachment_in_payload(message.get("payload", {}), attachment_id)
+                filename = filename or attachment_info.get("filename", "unknown")
+                mime_type = mime_type or attachment_info.get("mimeType", "application/octet-stream")
+
+            # Decode and save to a temp file instead of returning inline base64
+            data = attachment.get("data", "")
+            file_bytes = base64.urlsafe_b64decode(data)
+
+            tmp_dir = Path(tempfile.gettempdir()) / "gmail_attachments"
+            tmp_dir.mkdir(exist_ok=True)
+            file_path = tmp_dir / filename
+            # Avoid collisions
+            if file_path.exists():
+                stem = file_path.stem
+                suffix = file_path.suffix
+                counter = 1
+                while file_path.exists():
+                    file_path = tmp_dir / f"{stem}_{counter}{suffix}"
+                    counter += 1
+            file_path.write_bytes(file_bytes)
 
             return {
-                "data": attachment.get("data", ""),
-                "size": attachment.get("size", 0),
-                "filename": attachment_info.get("filename", "unknown"),
-                "mimeType": attachment_info.get("mimeType", "application/octet-stream"),
+                "file_path": str(file_path),
+                "size": len(file_bytes),
+                "filename": filename,
+                "mimeType": mime_type or "application/octet-stream",
             }
 
         except Exception as e:
@@ -614,6 +636,11 @@ class GmailService(BaseGoogleService):
 
                 metadata["mimeType"] = payload.get("mimeType")
 
+            # Always extract attachment metadata
+            attachments = self._extract_attachment_metadata(payload)
+            if attachments:
+                metadata["attachments"] = attachments
+
             return metadata
 
         except Exception as e:
@@ -666,6 +693,27 @@ class GmailService(BaseGoogleService):
         except Exception as e:
             logger.error(f"Error extracting body: {str(e)}")
             return None
+
+    def _extract_attachment_metadata(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
+        """
+        Extract attachment metadata (id, filename, mimeType, size) from the message payload.
+        """
+        attachments = []
+
+        def _walk(part):
+            if "parts" in part:
+                for subpart in part["parts"]:
+                    _walk(subpart)
+            elif part.get("filename") and part.get("body", {}).get("attachmentId"):
+                attachments.append({
+                    "attachmentId": part["body"]["attachmentId"],
+                    "filename": part["filename"],
+                    "mimeType": part.get("mimeType"),
+                    "size": part.get("body", {}).get("size", 0),
+                })
+
+        _walk(payload)
+        return attachments
 
     def bulk_delete_messages(self, message_ids: list[str]) -> dict[str, Any]:
         """
