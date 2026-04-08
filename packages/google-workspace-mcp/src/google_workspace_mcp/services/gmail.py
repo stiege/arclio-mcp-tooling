@@ -5,9 +5,12 @@ Google Gmail service implementation.
 import base64
 import json
 import logging
+import mimetypes
 import tempfile
 import time
 import traceback
+from email import encoders
+from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr, getaddresses
@@ -58,22 +61,52 @@ def _normalize_recipients(value: str | list[str] | None) -> list[str]:
 
 
 def _build_mime_message(
-    body: str, html_body: str | None = None
+    body: str,
+    html_body: str | None = None,
+    attachments: list[str] | None = None,
 ) -> MIMEText | MIMEMultipart:
     """Build a MIME message, multipart/alternative when HTML is provided.
 
     A plain-text part is always included (required for accessibility and for
     clients that don't render HTML); when html_body is given the message becomes
     multipart/alternative with the HTML part last so clients prefer it.
+
+    When attachments (absolute file paths) are given, the message becomes
+    multipart/mixed: the body part first, then one part per file.
     """
     if html_body:
-        message = MIMEMultipart("alternative")
+        body_part = MIMEMultipart("alternative")
         # Explicit utf-8 so non-ASCII content (accents, em-dashes, the ʻokina
         # in "Koʻa Kea", emoji) doesn't raise UnicodeEncodeError on as_bytes().
-        message.attach(MIMEText(body or "", "plain", "utf-8"))
-        message.attach(MIMEText(html_body, "html", "utf-8"))
-        return message
-    return MIMEText(body, "plain", "utf-8")
+        body_part.attach(MIMEText(body or "", "plain", "utf-8"))
+        body_part.attach(MIMEText(html_body, "html", "utf-8"))
+    else:
+        body_part = MIMEText(body, "plain", "utf-8")
+
+    if not attachments:
+        return body_part
+
+    message = MIMEMultipart("mixed")
+    message.attach(body_part)
+    for file_path in attachments:
+        path = Path(file_path)
+        if not path.is_file():
+            raise FileNotFoundError(f"Attachment not found: {file_path}")
+
+        content_type, _ = mimetypes.guess_type(str(path))
+        if content_type is None:
+            content_type = "application/octet-stream"
+        maintype, subtype = content_type.split("/", 1)
+
+        file_data = path.read_bytes()
+        attachment = MIMEBase(maintype, subtype)
+        attachment.set_payload(file_data)
+        encoders.encode_base64(attachment)
+        attachment.add_header("Content-Disposition", "attachment", filename=path.name)
+        message.attach(attachment)
+        logger.info(f"Attached file: {path.name} ({len(file_data)} bytes, {content_type})")
+
+    return message
 
 
 class GmailService(BaseGoogleService):
@@ -233,6 +266,7 @@ class GmailService(BaseGoogleService):
         cc: list[str] | None = None,
         bcc: list[str] | None = None,
         html_body: str | None = None,
+        attachments: list[str] | None = None,
     ) -> dict[str, Any] | None:
         """
         Create a draft email message.
@@ -245,6 +279,7 @@ class GmailService(BaseGoogleService):
             bcc: List of email addresses to BCC (note: BCC is not visible in drafts)
             html_body: Optional HTML body; when given the draft is sent as
                 multipart/alternative (plain + HTML).
+            attachments: Optional list of absolute file paths to attach
 
         Returns:
             Draft message data including the draft ID if successful
@@ -254,7 +289,7 @@ class GmailService(BaseGoogleService):
             cc_list = _normalize_recipients(cc)
 
             # Create the message in MIME format
-            mime_message = _build_mime_message(body, html_body)
+            mime_message = _build_mime_message(body, html_body, attachments)
             mime_message["to"] = ", ".join(to_list)
             mime_message["subject"] = subject
 
@@ -325,6 +360,7 @@ class GmailService(BaseGoogleService):
         cc: list[str] | None = None,
         bcc: list[str] | None = None,
         html_body: str | None = None,
+        attachments: list[str] | None = None,
     ) -> dict[str, Any] | None:
         """
         Composes and sends an email message directly.
@@ -337,6 +373,7 @@ class GmailService(BaseGoogleService):
             bcc: Optional list of email addresses to BCC.
             html_body: Optional HTML body; when given the email is sent as
                 multipart/alternative (plain + HTML).
+            attachments: Optional list of absolute file paths to attach.
 
         Returns:
             The sent message object or an error dictionary.
@@ -347,7 +384,6 @@ class GmailService(BaseGoogleService):
 
         if not to_list:
             logger.error("Recipient list 'to' cannot be empty for send_email.")
-            # Consistent error structure with handle_api_error, though not an API error directly
             return {
                 "error": True,
                 "error_type": "validation_error",
@@ -357,7 +393,7 @@ class GmailService(BaseGoogleService):
 
         try:
             logger.info(f"Sending email to: {to_list}, subject: '{subject}'")
-            mime_message = _build_mime_message(body, html_body)
+            mime_message = _build_mime_message(body, html_body, attachments)
             mime_message["To"] = ", ".join(to_list)
             mime_message["Subject"] = subject
             if cc_list:

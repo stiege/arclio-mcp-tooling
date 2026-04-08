@@ -117,7 +117,7 @@ async def gmail_get_attachment_content(message_id: str, attachment_id: str, file
 
 @mcp.tool(
     name="create_gmail_draft",
-    description="Creates a draft email message in Gmail.",
+    description="Creates a draft email message in Gmail, optionally with file attachments.",
 )
 async def create_gmail_draft(
     to: str,
@@ -125,6 +125,7 @@ async def create_gmail_draft(
     body: str,
     cc: list[str] | None = None,
     bcc: list[str] | None = None,
+    attachments: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Creates a draft email message in Gmail.
@@ -135,6 +136,7 @@ async def create_gmail_draft(
         body: Body content of the email.
         cc: Optional list of email addresses to CC.
         bcc: Optional list of email addresses to BCC.
+        attachments: Optional list of absolute file paths to attach.
 
     Returns:
         A dictionary containing the created draft details.
@@ -144,8 +146,7 @@ async def create_gmail_draft(
         raise ValueError("To, subject, and body are required")
 
     gmail_service = GmailService()
-    # Pass bcc parameter even though service may not use it (for test compatibility)
-    result = gmail_service.create_draft(to=to, subject=subject, body=body, cc=cc, bcc=bcc)
+    result = gmail_service.create_draft(to=to, subject=subject, body=body, cc=cc, bcc=bcc, attachments=attachments)
 
     if not result or (isinstance(result, dict) and result.get("error")):
         error_msg = "Error creating draft"
@@ -564,7 +565,7 @@ async def gmail_delete_filter(filter_id: str) -> dict[str, Any]:
 
 @mcp.tool(
     name="gmail_send_email",
-    description="Composes and sends an email directly.",
+    description="Composes and sends an email directly, optionally with file attachments.",
 )
 async def gmail_send_email(
     to: list[str] | str,
@@ -573,6 +574,7 @@ async def gmail_send_email(
     cc: list[str] | str | None = None,
     bcc: list[str] | str | None = None,
     html_body: str | None = None,
+    attachments: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Composes and sends an email message.
@@ -586,6 +588,7 @@ async def gmail_send_email(
         bcc: Optional. BCC recipient(s), same accepted forms as ``to``.
         html_body: Optional. HTML body; when provided the email is sent as
             multipart/alternative (plain ``body`` + HTML).
+        attachments: Optional. A list of absolute file paths to attach.
 
     Returns:
         A dictionary containing the details of the sent message or an error.
@@ -597,12 +600,12 @@ async def gmail_send_email(
         raise ValueError("Recipients 'to' cannot be empty.")
     if not subject or not subject.strip():
         raise ValueError("Subject cannot be empty.")
-    if body is None:  # Allow empty string for body, but not None if it implies missing arg.
+    if body is None:
         raise ValueError("Body cannot be None (can be an empty string).")
 
     gmail_service = GmailService()
     result = gmail_service.send_email(
-        to=to, subject=subject, body=body, cc=cc, bcc=bcc, html_body=html_body
+        to=to, subject=subject, body=body, cc=cc, bcc=bcc, html_body=html_body, attachments=attachments
     )
 
     if isinstance(result, dict) and result.get("error"):
