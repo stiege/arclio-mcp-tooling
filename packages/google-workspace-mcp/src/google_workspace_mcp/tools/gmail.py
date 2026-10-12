@@ -223,13 +223,14 @@ async def gmail_send_draft(draft_id: str) -> dict[str, Any]:
 
 @mcp.tool(
     name="gmail_reply_to_email",
-    description="Create a reply to an existing email. Can be sent or saved as draft.",
+    description="Create a reply to an existing email, optionally with file attachments. Can be sent or saved as draft.",
 )
 async def gmail_reply_to_email(
     email_id: str,
     reply_body: str,
     send: bool = False,
     reply_all: bool = False,
+    attachments: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Creates a reply to an existing email thread.
@@ -239,6 +240,7 @@ async def gmail_reply_to_email(
         reply_body: Body content of the reply.
         send: If True, send the reply immediately. If False, save as draft.
         reply_all: If True, reply to all recipients. If False, reply to sender only.
+        attachments: Optional list of absolute file paths to attach.
 
     Returns:
         A dictionary containing the sent message or created draft details.
@@ -251,7 +253,9 @@ async def gmail_reply_to_email(
     result = gmail_service.reply_to_email(
         email_id=email_id,
         reply_body=reply_body,
+        send=send,
         reply_all=reply_all,
+        attachments=attachments,
     )
 
     if not result or (isinstance(result, dict) and result.get("error")):

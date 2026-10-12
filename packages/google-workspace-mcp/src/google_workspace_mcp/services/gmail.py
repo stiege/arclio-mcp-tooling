@@ -419,6 +419,7 @@ class GmailService(BaseGoogleService):
         reply_body: str,
         send: bool = False,
         cc: list[str] | None = None,
+        attachments: list[str] | None = None,
     ) -> dict[str, Any] | None:
         """
         Create a reply to an email message and either send it or save as draft.
@@ -428,6 +429,7 @@ class GmailService(BaseGoogleService):
             reply_body: Body content of the reply
             send: If True, sends the reply immediately. If False, saves as draft.
             cc: List of email addresses to CC
+            attachments: Optional list of absolute file paths to attach
 
         Returns:
             Sent message or draft data if successful
@@ -459,7 +461,7 @@ class GmailService(BaseGoogleService):
             full_reply_body = f"{reply_body}\n\nOn {original_date}, {original_from} wrote:\n> {quoted_body}"
 
             # Create MIME message
-            mime_message = MIMEText(full_reply_body)
+            mime_message = _build_mime_message(full_reply_body, attachments=attachments)
             mime_message["to"] = to_address
             mime_message["subject"] = subject
 
@@ -493,14 +495,23 @@ class GmailService(BaseGoogleService):
         except Exception as e:
             return self.handle_api_error("create_reply", e)
 
-    def reply_to_email(self, email_id: str, reply_body: str, reply_all: bool = False) -> dict[str, Any] | None:
+    def reply_to_email(
+        self,
+        email_id: str,
+        reply_body: str,
+        send: bool = False,
+        reply_all: bool = False,
+        attachments: list[str] | None = None,
+    ) -> dict[str, Any] | None:
         """
         Reply to an email (wrapper for compatibility).
 
         Args:
             email_id: The ID of the email to reply to
             reply_body: Body content of the reply
+            send: If True, sends the reply immediately. If False, saves as draft.
             reply_all: If True, reply to all recipients
+            attachments: Optional list of absolute file paths to attach
 
         Returns:
             Reply message data if successful
@@ -514,16 +525,24 @@ class GmailService(BaseGoogleService):
             # Use the existing create_reply method
             cc = None
             if reply_all:
-                # Extract CC recipients from original message
-                cc_header = original_message.get("cc")
-                if cc_header:
-                    cc = [addr.strip() for addr in cc_header.split(",")]
+                # CC everyone on the original To and Cc lines except ourselves and
+                # the original sender (who is already the reply's To).
+                own_address = self.service.users().getProfile(userId="me").execute()["emailAddress"]
+                excluded = {own_address.lower()}
+                excluded.update(addr.lower() for _, addr in getaddresses([original_message.get("from", "")]))
+                cc = []
+                for name, addr in getaddresses([original_message.get("to", ""), original_message.get("cc", "")]):
+                    if addr and addr.lower() not in excluded:
+                        cc.append(formataddr((name, addr)))
+                        excluded.add(addr.lower())
+                cc = cc or None
 
             return self.create_reply(
                 original_message=original_message,
                 reply_body=reply_body,
-                send=False,  # Default to draft
+                send=send,
                 cc=cc,
+                attachments=attachments,
             )
 
         except Exception as e:

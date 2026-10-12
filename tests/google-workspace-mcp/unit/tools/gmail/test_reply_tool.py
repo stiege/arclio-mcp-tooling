@@ -36,7 +36,11 @@ class TestGmailReplyToEmailTool:
 
         # Verify service was called correctly
         mock_gmail_service.reply_to_email.assert_called_once_with(
-            email_id="original_msg123", reply_body="This is my reply", reply_all=False
+            email_id="original_msg123",
+            reply_body="This is my reply",
+            send=False,
+            reply_all=False,
+            attachments=None,
         )
 
         # Verify result
@@ -53,10 +57,32 @@ class TestGmailReplyToEmailTool:
 
         # Verify service was called correctly
         mock_gmail_service.reply_to_email.assert_called_once_with(
-            email_id="original_msg123", reply_body="Reply to all", reply_all=True
+            email_id="original_msg123",
+            reply_body="Reply to all",
+            send=False,
+            reply_all=True,
+            attachments=None,
         )
 
         # Verify result
+        assert result == expected_result
+
+    async def test_gmail_reply_to_email_send_with_attachments(self, mock_gmail_service):
+        """Test send=True and attachments are passed through to the service."""
+        expected_result = {"id": "sent_msg123"}
+        mock_gmail_service.reply_to_email.return_value = expected_result
+
+        result = await gmail_reply_to_email(
+            "original_msg123", "See attached", send=True, attachments=["/tmp/a.pdf", "/tmp/b.csv"]
+        )
+
+        mock_gmail_service.reply_to_email.assert_called_once_with(
+            email_id="original_msg123",
+            reply_body="See attached",
+            send=True,
+            reply_all=False,
+            attachments=["/tmp/a.pdf", "/tmp/b.csv"],
+        )
         assert result == expected_result
 
     async def test_gmail_reply_to_email_missing_params(self, mock_gmail_service):
