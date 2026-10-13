@@ -36,7 +36,9 @@ class TestGmailGetAttachmentContentTool:
         result = await gmail_get_attachment_content("msg123", "att456")
 
         # Verify service was called correctly
-        mock_gmail_service.get_attachment_content.assert_called_once_with(message_id="msg123", attachment_id="att456")
+        mock_gmail_service.get_attachment_content.assert_called_once_with(
+            message_id="msg123", attachment_id="att456", filename=None, mime_type=None
+        )
 
         # Verify result
         assert result == expected_result

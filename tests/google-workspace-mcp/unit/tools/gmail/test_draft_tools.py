@@ -57,6 +57,7 @@ class TestCreateGmailDraft:
             body="Hello, this is a test email.",
             cc=None,
             bcc=None,
+            attachments=None,
         )
         assert result == mock_service_response
 
@@ -83,6 +84,7 @@ class TestCreateGmailDraft:
             body="This email has CC and BCC recipients.",
             cc="cc@example.com",
             bcc="bcc@example.com",
+            attachments=None,
         )
         assert result == mock_service_response
 

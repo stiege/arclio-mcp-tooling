@@ -138,9 +138,8 @@ class TestDeleteCalendarEvent:
             await delete_calendar_event(**args)
 
     async def test_delete_event_service_failure_with_error_info(self, mock_calendar_service):
-        """Test delete_calendar_event when service returns False with specific error."""
-        mock_calendar_service.delete_event.return_value = False
-        mock_calendar_service.last_error = {
+        """Test delete_calendar_event when service returns an error dict."""
+        mock_calendar_service.delete_event.return_value = {
             "error": True,
             "message": "API: Event not found",
         }

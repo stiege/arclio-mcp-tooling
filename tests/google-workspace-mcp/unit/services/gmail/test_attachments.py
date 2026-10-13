@@ -2,6 +2,9 @@
 Unit tests for Gmail attachment operations.
 """
 
+import base64
+import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock  # , patch
 
 # import pytest # Removed unused import
@@ -15,14 +18,17 @@ class TestGmailAttachments:
 
     # Removed local mock_gmail_service fixture
 
-    def test_get_attachment_content_success(self, mock_gmail_service):
+    def test_get_attachment_content_success(self, mock_gmail_service, tmp_path, monkeypatch):
         """Test successful attachment content retrieval."""
+        monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+
         # Test data
         message_id = "msg123"
         attachment_id = "att123"
+        content = b"%PDF-1.4 test"
 
         # Mock API response for attachment
-        mock_attachment = {"size": 12345, "data": "base64encodedattachmentdata"}
+        mock_attachment = {"size": len(content), "data": base64.urlsafe_b64encode(content).decode("ascii")}
 
         # Mock API response for message metadata
         mock_message = {
@@ -52,12 +58,13 @@ class TestGmailAttachments:
             userId="me", messageId=message_id, id=attachment_id
         )
         mock_gmail_service.service.users.return_value.messages.return_value.get.assert_called_once_with(
-            userId="me", id=message_id
+            userId="me", id=message_id, format="full"
         )
 
-        # Verify result
-        assert result["size"] == 12345
-        assert result["data"] == "base64encodedattachmentdata"
+        # Verify result: the decoded content is saved to a temp file
+        assert result["size"] == len(content)
+        assert Path(result["file_path"]) == tmp_path / "gmail_attachments" / "test_file.pdf"
+        assert Path(result["file_path"]).read_bytes() == content
         assert result["filename"] == "test_file.pdf"
         assert result["mimeType"] == "application/pdf"
 

@@ -38,7 +38,9 @@ class TestGmailSendEmailTool:
         result = await gmail_send_email(to, subject, body)
 
         # Verify service was called correctly
-        mock_gmail_service.send_email.assert_called_once_with(to=to, subject=subject, body=body, cc=None, bcc=None)
+        mock_gmail_service.send_email.assert_called_once_with(
+            to=to, subject=subject, body=body, cc=None, bcc=None, html_body=None, attachments=None
+        )
 
         # Verify result
         assert result == expected_result
@@ -58,40 +60,22 @@ class TestGmailSendEmailTool:
         result = await gmail_send_email(to, subject, body, cc=cc, bcc=bcc)
 
         # Verify service was called correctly
-        mock_gmail_service.send_email.assert_called_once_with(to=to, subject=subject, body=body, cc=cc, bcc=bcc)
+        mock_gmail_service.send_email.assert_called_once_with(
+            to=to, subject=subject, body=body, cc=cc, bcc=bcc, html_body=None, attachments=None
+        )
 
         # Verify result
         assert result == expected_result
 
-    async def test_gmail_send_email_invalid_to_list(self, mock_gmail_service):
-        """Test email sending with invalid 'to' parameter."""
-        # Test with empty list
-        with pytest.raises(
-            ValueError,
-            match="Recipients 'to' must be a non-empty list of email strings",
-        ):
+    async def test_gmail_send_email_empty_to(self, mock_gmail_service):
+        """An empty 'to' is rejected; other forms are normalized by the service."""
+        with pytest.raises(ValueError, match="Recipients 'to' cannot be empty"):
             await gmail_send_email([], "Subject", "Body")
 
-        # Test with non-list
-        with pytest.raises(
-            ValueError,
-            match="Recipients 'to' must be a non-empty list of email strings",
-        ):
-            await gmail_send_email("not_a_list", "Subject", "Body")
+        with pytest.raises(ValueError, match="Recipients 'to' cannot be empty"):
+            await gmail_send_email("", "Subject", "Body")
 
-        # Test with list containing non-strings
-        with pytest.raises(
-            ValueError,
-            match="Recipients 'to' must be a non-empty list of email strings",
-        ):
-            await gmail_send_email([123, "valid@example.com"], "Subject", "Body")
-
-        # Test with list containing empty strings
-        with pytest.raises(
-            ValueError,
-            match="Recipients 'to' must be a non-empty list of email strings",
-        ):
-            await gmail_send_email(["", "valid@example.com"], "Subject", "Body")
+        mock_gmail_service.send_email.assert_not_called()
 
     async def test_gmail_send_email_invalid_subject(self, mock_gmail_service):
         """Test email sending with invalid subject."""
