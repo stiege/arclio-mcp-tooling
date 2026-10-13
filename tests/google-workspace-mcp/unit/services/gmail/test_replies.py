@@ -41,6 +41,7 @@ class TestCreateReply:
         assert msg["subject"] == "Re: Original Subject"
         assert msg["In-Reply-To"] == "<orig@example.com>"
         assert not msg.is_multipart()
+        assert "> Original body" in msg.get_payload(decode=True).decode("utf-8")
         mock_gmail_service.service.users.return_value.messages.return_value.send.assert_not_called()
 
     def test_send_with_attachments(self, mock_gmail_service, tmp_path):
@@ -135,6 +136,16 @@ class TestReplyToEmail:
             mock_gmail_service.reply_to_email("orig123", "Reply", reply_all=True)
 
         assert create_reply.call_args.kwargs["cc"] is None
+
+    def test_fetches_original_with_body(self, mock_gmail_service):
+        """The original is fetched with its body so the reply quotes it."""
+        with (
+            patch.object(mock_gmail_service, "get_email_by_id", return_value=ORIGINAL_MESSAGE) as get_email,
+            patch.object(mock_gmail_service, "create_reply", return_value={"id": "draft1"}),
+        ):
+            mock_gmail_service.reply_to_email("orig123", "Reply")
+
+        get_email.assert_called_once_with("orig123", parse_body=True)
 
     def test_defaults_to_draft(self, mock_gmail_service):
         """Without send the reply is saved as a draft."""

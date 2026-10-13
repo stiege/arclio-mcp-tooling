@@ -518,7 +518,8 @@ class GmailService(BaseGoogleService):
         """
         try:
             # Get the original message
-            original_message = self.get_email_by_id(email_id, parse_body=False)
+            # The body is needed to quote the original in the reply
+            original_message = self.get_email_by_id(email_id, parse_body=True)
             if not original_message:
                 return {"error": True, "message": "Original email not found"}
 
