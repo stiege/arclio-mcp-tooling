@@ -91,3 +91,9 @@ release-gw = ["clean-gw", "build-gw", "publish-gw"]
 
 # Clean build artifacts
 clean-gw = { shell = "rm -rf dist/ packages/google-workspace-mcp/dist/" }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+    "pytest-asyncio>=1.4.0",
+]

@@ -282,6 +282,12 @@ dev = [
     { name = "uv" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "ipykernel", marker = "extra == 'dev'", specifier = ">=6.29.0" },
@@ -295,6 +301,12 @@ requires-dist = [
     { name = "uv", marker = "extra == 'dev'", specifier = ">=0.1.1" },
 ]
 provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.3.5" },
+    { name = "pytest-asyncio", specifier = ">=1.4.0" },
+]
 
 [[package]]
 name = "asttokens"
