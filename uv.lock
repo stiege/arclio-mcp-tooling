@@ -286,6 +286,7 @@ dev = [
 dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "trio" },
 ]
 
 [package.metadata]
@@ -306,6 +307,7 @@ provides-extras = ["dev"]
 dev = [
     { name = "pytest", specifier = ">=8.3.5" },
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
+    { name = "trio", specifier = ">=0.30.0" },
 ]
 
 [[package]]
