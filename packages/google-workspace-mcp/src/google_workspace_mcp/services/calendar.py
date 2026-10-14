@@ -147,6 +147,7 @@ class CalendarService(BaseGoogleService):
         send_notifications: bool = True,
         timezone: str | None = None,
         calendar_id: str = "primary",
+        recurrence: list[str] | None = None,
     ) -> dict[str, Any] | None:
         """
         Create a new calendar event.
@@ -161,6 +162,7 @@ class CalendarService(BaseGoogleService):
             send_notifications: Whether to send notifications to attendees
             timezone: Timezone for the event (e.g. 'America/New_York')
             calendar_id: ID of the calendar to create the event in
+            recurrence: RFC5545 lines, e.g. ["RRULE:FREQ=WEEKLY;BYDAY=SU"]; needs timezone
 
         Returns:
             Created event data or None if creation fails
@@ -186,6 +188,8 @@ class CalendarService(BaseGoogleService):
                 event["description"] = description
             if attendees:
                 event["attendees"] = [{"email": email} for email in attendees]
+            if recurrence:
+                event["recurrence"] = recurrence
 
             # Map boolean to required string for sendUpdates
             send_updates_value = "all" if send_notifications else "none"
@@ -235,6 +239,29 @@ class CalendarService(BaseGoogleService):
 
         except Exception as e:
             return self.handle_api_error("delete_event", e)
+
+    def set_recurrence(
+        self, event_id: str, recurrence: list[str], calendar_id: str = "primary"
+    ) -> dict[str, Any] | None:
+        """
+        Replace a recurring series' recurrence rules (e.g. add UNTIL to end it).
+
+        Args:
+            event_id: The series (master) event ID, i.e. recurringEventId of an instance
+            recurrence: RFC5545 lines replacing the existing ones
+            calendar_id: ID of the calendar containing the event
+
+        Returns:
+            The updated event, or an error dict.
+        """
+        try:
+            return (
+                self.service.events()
+                .patch(calendarId=calendar_id, eventId=event_id, body={"recurrence": recurrence})
+                .execute()
+            )
+        except Exception as e:
+            return self.handle_api_error("set_recurrence", e)
 
     def get_event_details(self, event_id: str, calendar_id: str = "primary") -> dict[str, Any] | None:
         """

@@ -140,6 +140,7 @@ async def create_calendar_event(
     attendees: list[str] | None = None,
     send_notifications: bool = True,
     timezone: str | None = None,
+    recurrence: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Create a new calendar event.
@@ -154,6 +155,8 @@ async def create_calendar_event(
         attendees: List of attendee email addresses (optional).
         send_notifications: Whether to send notifications to attendees (default True).
         timezone: Timezone for the event (e.g., 'America/New_York', defaults to UTC).
+        recurrence: RFC5545 lines for a repeating event, e.g. ["RRULE:FREQ=WEEKLY;BYDAY=SU"].
+            Requires timezone, so instances keep their wall-clock time across DST.
 
     Returns:
         A dictionary containing the created event details.
@@ -161,6 +164,8 @@ async def create_calendar_event(
     logger.info(f"Executing create_calendar_event on calendar '{calendar_id}'")
     if not summary or not start_time or not end_time:
         raise ValueError("Summary, start_time, and end_time are required")
+    if recurrence and not timezone:
+        raise ValueError("recurrence needs an explicit timezone (e.g. 'Europe/London')")
 
     calendar_service = CalendarService()
     result = calendar_service.create_event(
@@ -173,6 +178,7 @@ async def create_calendar_event(
         send_notifications=send_notifications,
         timezone=timezone,
         calendar_id=calendar_id,
+        recurrence=recurrence,
     )
 
     if not result or (isinstance(result, dict) and result.get("error")):
@@ -181,6 +187,39 @@ async def create_calendar_event(
             error_msg = result.get("message", error_msg)
         raise ValueError(error_msg)
 
+    return result
+
+
+@mcp.tool(
+    name="set_calendar_event_recurrence",
+    description="Replace the recurrence rules of a recurring event series, e.g. to end it with UNTIL.",
+)
+async def set_calendar_event_recurrence(
+    event_id: str,
+    recurrence: list[str],
+    calendar_id: str = "primary",
+) -> dict[str, Any]:
+    """
+    Replace a recurring series' recurrence rules.
+
+    Args:
+        event_id: The series ID (an instance's recurringEventId), not an instance ID.
+        recurrence: RFC5545 lines, e.g. ["RRULE:FREQ=WEEKLY;BYDAY=MO;UNTIL=20261004T235959Z"]
+            to stop a weekly series after 4 Oct 2026 while keeping its past instances.
+        calendar_id: Calendar ID (defaults to "primary").
+
+    Returns:
+        The updated series event.
+    """
+    logger.info(f"Executing set_calendar_event_recurrence on '{calendar_id}', event '{event_id}'")
+    if not event_id or not recurrence:
+        raise ValueError("event_id and recurrence are required")
+    if "_" in event_id:
+        raise ValueError(f"'{event_id}' looks like an instance ID; pass the series recurringEventId")
+
+    result = CalendarService().set_recurrence(event_id=event_id, recurrence=recurrence, calendar_id=calendar_id)
+    if not result or (isinstance(result, dict) and result.get("error")):
+        raise ValueError(result.get("message", "Failed to set recurrence") if isinstance(result, dict) else "Failed to set recurrence")
     return result
 
 
