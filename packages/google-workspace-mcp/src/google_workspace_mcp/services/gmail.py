@@ -420,6 +420,7 @@ class GmailService(BaseGoogleService):
         send: bool = False,
         cc: list[str] | None = None,
         attachments: list[str] | None = None,
+        to: str | None = None,
     ) -> dict[str, Any] | None:
         """
         Create a reply to an email message and either send it or save as draft.
@@ -430,12 +431,13 @@ class GmailService(BaseGoogleService):
             send: If True, sends the reply immediately. If False, saves as draft.
             cc: List of email addresses to CC
             attachments: Optional list of absolute file paths to attach
+            to: Recipient(s) of the reply. Defaults to the original sender.
 
         Returns:
             Sent message or draft data if successful
         """
         try:
-            to_address = original_message.get("from")
+            to_address = to or original_message.get("from")
             if not to_address:
                 raise ValueError("Could not determine original sender's address")
 
@@ -472,7 +474,9 @@ class GmailService(BaseGoogleService):
             # Set reply headers
             if "message_id" in original_message:
                 mime_message["In-Reply-To"] = original_message["message_id"]
-                mime_message["References"] = original_message["message_id"]
+                # RFC 5322: the parent's References chain plus the parent's own id.
+                prior_refs = original_message.get("references", "").strip()
+                mime_message["References"] = f"{prior_refs} {original_message['message_id']}".strip()
 
             # Encode the message
             raw_message = base64.urlsafe_b64encode(mime_message.as_bytes()).decode("utf-8")
@@ -523,16 +527,35 @@ class GmailService(BaseGoogleService):
             if not original_message:
                 return {"error": True, "message": "Original email not found"}
 
-            # Use the existing create_reply method
+            own_address = self.service.users().getProfile(userId="me").execute()["emailAddress"].lower()
+            sender_addrs = [addr for _, addr in getaddresses([original_message.get("from", "")]) if addr]
+
+            to = None
+            cc_sources = [original_message.get("to", ""), original_message.get("cc", "")]
+            excluded = {own_address}
+            if any(addr.lower() == own_address for addr in sender_addrs):
+                # Replying to our own sent message: a plain reply would be
+                # addressed to ourselves. Address it to the original To instead,
+                # as Gmail's web UI does.
+                to_entries = [
+                    formataddr((name, addr))
+                    for name, addr in getaddresses([original_message.get("to", "")])
+                    if addr and addr.lower() != own_address
+                ]
+                if not to_entries:
+                    raise ValueError("Original message was sent by us and has no other To recipients")
+                to = ", ".join(to_entries)
+                excluded.update(addr.lower() for _, addr in getaddresses([original_message.get("to", "")]))
+                cc_sources = [original_message.get("cc", "")]
+            else:
+                excluded.update(addr.lower() for addr in sender_addrs)
+
             cc = None
             if reply_all:
-                # CC everyone on the original To and Cc lines except ourselves and
-                # the original sender (who is already the reply's To).
-                own_address = self.service.users().getProfile(userId="me").execute()["emailAddress"]
-                excluded = {own_address.lower()}
-                excluded.update(addr.lower() for _, addr in getaddresses([original_message.get("from", "")]))
+                # CC everyone else on the original, minus ourselves, the reply's
+                # To recipients and duplicates.
                 cc = []
-                for name, addr in getaddresses([original_message.get("to", ""), original_message.get("cc", "")]):
+                for name, addr in getaddresses(cc_sources):
                     if addr and addr.lower() not in excluded:
                         cc.append(formataddr((name, addr)))
                         excluded.add(addr.lower())
@@ -544,6 +567,7 @@ class GmailService(BaseGoogleService):
                 send=send,
                 cc=cc,
                 attachments=attachments,
+                to=to,
             )
 
         except Exception as e:

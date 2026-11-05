@@ -258,12 +258,15 @@ This package exposes a variety of tools and resources for AI interaction.
 - **`gmail_get_attachment_content`**: Retrieves a specific email attachment.
   - `message_id` (string): The ID of the email message.
   - `attachment_id` (string): The ID of the attachment.
-- **`create_gmail_draft`**: Creates a draft email.
-  - `to` (string): Recipient's email address.
-  - `subject` (string): Email subject.
+- **`create_gmail_draft`**: Creates a draft email: a new conversation, or a threaded reply when `reply_to_message_id` is given.
   - `body` (string): Email body content.
-  - `cc` (list[string], optional): CC recipients.
-  - `bcc` (list[string], optional): BCC recipients.
+  - `to` (string, new conversations only): Recipient's email address.
+  - `subject` (string, new conversations only): Email subject. A `Re:` subject without `reply_to_message_id` is refused.
+  - `cc` (list[string], optional, new conversations only): CC recipients.
+  - `bcc` (list[string], optional, new conversations only): BCC recipients.
+  - `attachments` (list[string], optional): Absolute file paths to attach.
+  - `reply_to_message_id` (string, optional): ID of the message being replied to. The draft joins its thread with `In-Reply-To`/`References` set and is addressed to the sender, or to the original recipients when the message was our own.
+  - `reply_all` (boolean, optional): With `reply_to_message_id`, CC everyone else on the original.
 - **`delete_gmail_draft`**: Deletes a draft email.
   - `draft_id` (string): The ID of the draft.
 - **`gmail_send_draft`**: Sends an existing draft.
@@ -274,11 +277,6 @@ This package exposes a variety of tools and resources for AI interaction.
   - `body` (string): Email body content.
   - `cc` (list[string], optional): CC recipients.
   - `bcc` (list[string], optional): BCC recipients.
-- **`gmail_reply_to_email`**: Creates a reply to an email (saves as draft by default).
-  - `email_id` (string): ID of the message to reply to.
-  - `reply_body` (string): Content of the reply.
-  - `send` (boolean, optional): Send immediately if true (default: False, creates draft).
-  - `reply_all` (boolean, optional): Reply to all recipients if true (default: False).
 - **`gmail_bulk_delete_messages`**: Deletes multiple emails.
   - `message_ids` (list[string]): List of email message IDs.
 - **`gmail_archive_messages`**: Archives multiple emails (removes from inbox, keeps in All Mail).

@@ -67,6 +67,18 @@ class TestCreateReply:
         assert parts[1].get_payload(decode=True) == b"%PDF-1.4 test"
         mock_gmail_service.service.users.return_value.drafts.return_value.create.assert_not_called()
 
+    def test_references_extends_parent_chain(self, mock_gmail_service):
+        """References carries the parent's chain plus the parent's id; explicit to overrides sender."""
+        drafts = mock_gmail_service.service.users.return_value.drafts.return_value
+        drafts.create.return_value.execute.return_value = {"id": "draft1"}
+        original = {**ORIGINAL_MESSAGE, "references": "<a@example.com> <b@example.com>"}
+
+        mock_gmail_service.create_reply(original, "My reply", to="other@example.com")
+
+        msg = _decode_raw(drafts.create.call_args.kwargs["body"]["message"])
+        assert msg["References"] == "<a@example.com> <b@example.com> <orig@example.com>"
+        assert msg["to"] == "other@example.com"
+
     def test_missing_attachment_returns_error(self, mock_gmail_service):
         """A missing attachment path fails the reply rather than dropping the file."""
         result = mock_gmail_service.create_reply(
@@ -102,7 +114,39 @@ class TestReplyToEmail:
             send=True,
             cc=["a@example.com", "b@example.com"],
             attachments=["/tmp/x.pdf"],
+            to=None,
         )
+
+    def test_reply_to_own_sent_message_goes_to_original_recipients(self, mock_gmail_service):
+        """Replying to our own message addresses the original To, not ourselves."""
+        self._set_own_address(mock_gmail_service, "me@example.com")
+        original = {
+            **ORIGINAL_MESSAGE,
+            "from": "Me <ME@example.com>",
+            "to": '"Cheung, Danny" <danny@example.com>, me@example.com',
+            "cc": "ops@example.com, danny@example.com",
+        }
+        with (
+            patch.object(mock_gmail_service, "get_email_by_id", return_value=original),
+            patch.object(mock_gmail_service, "create_reply", return_value={"id": "draft1"}) as create_reply,
+        ):
+            mock_gmail_service.reply_to_email("orig123", "Reply", reply_all=True)
+
+        assert create_reply.call_args.kwargs["to"] == '"Cheung, Danny" <danny@example.com>'
+        assert create_reply.call_args.kwargs["cc"] == ["ops@example.com"]
+
+    def test_reply_to_own_message_with_no_other_recipient_fails(self, mock_gmail_service):
+        """A note-to-self has nobody to reply to; fail rather than address ourselves."""
+        self._set_own_address(mock_gmail_service, "me@example.com")
+        original = {**ORIGINAL_MESSAGE, "from": "me@example.com", "to": "me@example.com"}
+        with (
+            patch.object(mock_gmail_service, "get_email_by_id", return_value=original),
+            patch.object(mock_gmail_service, "create_reply") as create_reply,
+        ):
+            result = mock_gmail_service.reply_to_email("orig123", "Reply")
+
+        assert result["error"] is True
+        create_reply.assert_not_called()
 
     def test_reply_all_includes_to_and_cc(self, mock_gmail_service):
         """reply_all CCs original To and Cc, minus own address, sender and duplicates."""
@@ -139,6 +183,7 @@ class TestReplyToEmail:
 
     def test_fetches_original_with_body(self, mock_gmail_service):
         """The original is fetched with its body so the reply quotes it."""
+        self._set_own_address(mock_gmail_service)
         with (
             patch.object(mock_gmail_service, "get_email_by_id", return_value=ORIGINAL_MESSAGE) as get_email,
             patch.object(mock_gmail_service, "create_reply", return_value={"id": "draft1"}),
@@ -149,6 +194,7 @@ class TestReplyToEmail:
 
     def test_defaults_to_draft(self, mock_gmail_service):
         """Without send the reply is saved as a draft."""
+        self._set_own_address(mock_gmail_service)
         with (
             patch.object(mock_gmail_service, "get_email_by_id", return_value=ORIGINAL_MESSAGE),
             patch.object(mock_gmail_service, "create_reply", return_value={"id": "draft1"}) as create_reply,

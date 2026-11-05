@@ -117,36 +117,75 @@ async def gmail_get_attachment_content(message_id: str, attachment_id: str, file
 
 @mcp.tool(
     name="create_gmail_draft",
-    description="Creates a draft email message in Gmail, optionally with file attachments.",
+    description=(
+        "Creates a Gmail draft, optionally with file attachments. "
+        "To REPLY to an existing email, pass reply_to_message_id (the ID of the message being answered) "
+        "and omit to/subject: the draft is threaded with In-Reply-To/References set, addressed to the "
+        "sender (or to the original recipients if the message was our own), and reply_all keeps everyone "
+        "else on CC. Without reply_to_message_id it starts a new conversation and needs to and subject."
+    ),
 )
 async def create_gmail_draft(
-    to: str,
-    subject: str,
     body: str,
+    to: str | None = None,
+    subject: str | None = None,
     cc: list[str] | None = None,
     bcc: list[str] | None = None,
     attachments: list[str] | None = None,
+    reply_to_message_id: str | None = None,
+    reply_all: bool = False,
 ) -> dict[str, Any]:
     """
-    Creates a draft email message in Gmail.
+    Creates a draft email message in Gmail, either a new conversation or a threaded reply.
 
     Args:
-        to: Email address of the recipient.
-        subject: Subject line of the email.
         body: Body content of the email.
-        cc: Optional list of email addresses to CC.
-        bcc: Optional list of email addresses to BCC.
+        to: Recipient address. New conversations only; replies derive it from the original.
+        subject: Subject line. New conversations only; replies use "Re: <original subject>".
+        cc: Optional list of email addresses to CC (new conversations only).
+        bcc: Optional list of email addresses to BCC (new conversations only).
         attachments: Optional list of absolute file paths to attach.
+        reply_to_message_id: ID of the message being replied to. Makes the draft a threaded reply.
+        reply_all: With reply_to_message_id, CC everyone else on the original.
 
     Returns:
         A dictionary containing the created draft details.
     """
-    logger.info("Executing create_gmail_draft")
-    if not to or not subject or not body:  # Check for empty strings
-        raise ValueError("To, subject, and body are required")
+    logger.info(f"Executing create_gmail_draft (reply_to_message_id={reply_to_message_id!r})")
+    if not body:
+        raise ValueError("Body is required")
 
-    gmail_service = GmailService()
-    result = gmail_service.create_draft(to=to, subject=subject, body=body, cc=cc, bcc=bcc, attachments=attachments)
+    if reply_to_message_id:
+        if to or subject or cc or bcc:
+            raise ValueError(
+                "With reply_to_message_id, omit to/subject/cc/bcc: recipients and subject come from the "
+                "original message (use reply_all=True to keep its CCs)"
+            )
+        result = GmailService().reply_to_email(
+            email_id=reply_to_message_id,
+            reply_body=body,
+            send=False,
+            reply_all=reply_all,
+            attachments=attachments,
+        )
+        if not result or (isinstance(result, dict) and result.get("error")):
+            error_msg = "Error creating reply draft"
+            if isinstance(result, dict):
+                error_msg = result.get("message", error_msg)
+            raise ValueError(error_msg)
+        return result
+
+    if reply_all:
+        raise ValueError("reply_all needs reply_to_message_id")
+    if not to or not subject:
+        raise ValueError("To and subject are required for a new conversation")
+    if subject.strip().lower().startswith("re:"):
+        raise ValueError(
+            "Subject looks like a reply. Pass reply_to_message_id (and omit to/subject) so the draft is "
+            "threaded, instead of a new conversation with a 'Re:' subject"
+        )
+
+    result = GmailService().create_draft(to=to, subject=subject, body=body, cc=cc, bcc=bcc, attachments=attachments)
 
     if not result or (isinstance(result, dict) and result.get("error")):
         error_msg = "Error creating draft"
@@ -217,53 +256,6 @@ async def gmail_send_draft(draft_id: str) -> dict[str, Any]:
 
     if not result:  # Should be caught by error dict check
         raise ValueError(f"Failed to send draft '{draft_id}'")
-
-    return result
-
-
-@mcp.tool(
-    name="gmail_reply_to_email",
-    description="Create a reply to an existing email, optionally with file attachments. Can be sent or saved as draft.",
-)
-async def gmail_reply_to_email(
-    email_id: str,
-    reply_body: str,
-    send: bool = False,
-    reply_all: bool = False,
-    attachments: list[str] | None = None,
-) -> dict[str, Any]:
-    """
-    Creates a reply to an existing email thread.
-
-    Args:
-        email_id: The ID of the message being replied to.
-        reply_body: Body content of the reply.
-        send: If True, send the reply immediately. If False, save as draft.
-        reply_all: If True, reply to all recipients. If False, reply to sender only.
-        attachments: Optional list of absolute file paths to attach.
-
-    Returns:
-        A dictionary containing the sent message or created draft details.
-    """
-    logger.info(f"Executing gmail_reply_to_email to message: '{email_id}'")
-    if not email_id or not reply_body:
-        raise ValueError("Email ID and reply body are required")
-
-    gmail_service = GmailService()
-    result = gmail_service.reply_to_email(
-        email_id=email_id,
-        reply_body=reply_body,
-        send=send,
-        reply_all=reply_all,
-        attachments=attachments,
-    )
-
-    if not result or (isinstance(result, dict) and result.get("error")):
-        action = "send reply" if send else "create reply draft"
-        error_msg = f"Error trying to {action}"
-        if isinstance(result, dict):
-            error_msg = result.get("message", error_msg)
-        raise ValueError(error_msg)
 
     return result
 

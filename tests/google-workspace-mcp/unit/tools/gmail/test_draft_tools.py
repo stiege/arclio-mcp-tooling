@@ -111,10 +111,15 @@ class TestCreateGmailDraft:
             "body": "Test body",
         }
 
-        for key in ["to", "subject", "body"]:
+        expected = {
+            "to": "To and subject are required for a new conversation",
+            "subject": "To and subject are required for a new conversation",
+            "body": "Body is required",
+        }
+        for key, message in expected.items():
             args = base_args.copy()
             args[key] = ""
-            with pytest.raises(ValueError, match="To, subject, and body are required"):
+            with pytest.raises(ValueError, match=message):
                 await create_gmail_draft(**args)
 
 
